@@ -1,10 +1,11 @@
 name: data_saver_example
 description: Demonstrates how to use the data_saver plugin.
 publish_to: "none"
+version: 1.0.0+1
 
 environment:
-  sdk: ">=3.6.0 <4.0.0"
-  flutter: ">=3.27.0"
+  sdk: ">=3.11.0 <4.0.0"
+  flutter: ">=3.41.0"
 
 dependencies:
   data_saver:

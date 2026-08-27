@@ -1,3 +1,8 @@
+## Unreleased
+
+- **Breaking**: Bumped the minimum Flutter version to 3.41.0 and Dart version to 3.11.0
+- Added Flutter 3.44 Swift Package Manager support for iOS and macOS while retaining CocoaPods compatibility for Flutter 3.41
+
 ## 0.4.0
 
 - **Breaking**: Bumped min. Flutter version to 3.27.0
