@@ -11,4 +11,4 @@ jobs:
 
     steps:
       - name: Test packages
-        uses: n-bernat/flutter-tools/packages/test@master
+        uses: nikodembernat/flutter-tools/packages/test@master

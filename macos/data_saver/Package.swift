@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "data_saver",
     platforms: [
-        .macOS("10.15")
+        .macOS("12.0")
     ],
     products: [
         .library(name: "data-saver", targets: ["data_saver"])

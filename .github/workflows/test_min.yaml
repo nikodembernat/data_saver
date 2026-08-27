@@ -1,4 +1,4 @@
-name: Test packages (3.41.0)
+name: Test packages (3.44.0)
 on:
   push:
     branches:
@@ -6,11 +6,11 @@ on:
 
 jobs:
   publish:
-    name: Test packages (3.41.0)
+    name: Test packages (3.44.0)
     runs-on: ubuntu-latest
 
     steps:
       - name: Test packages
-        uses: n-bernat/flutter-tools/packages/test@master
+        uses: nikodembernat/flutter-tools/packages/test@master
         with:
-          version: "3.41.0"
+          version: "3.44.0"
