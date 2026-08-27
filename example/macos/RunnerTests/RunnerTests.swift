@@ -2,41 +2,69 @@ import Cocoa
 import FlutterMacOS
 import XCTest
 
-// If your plugin has been explicitly set to "type: .dynamic" in the Package.swift,
-// you will need to add your plugin as a dependency of RunnerTests within Xcode.
-
 @testable import data_saver
 
-// This demonstrates a simple unit test of the Swift portion of this plugin's implementation.
-//
-// See https://developer.apple.com/documentation/xctest for more information about using XCTest.
+// Low Data Mode cannot be toggled from a test, so `DataSaverPlugin` takes an
+// injectable probe and these tests drive both states directly. The mapping
+// direction is what matters: an inverted `isConstrained` would report Low Data
+// Mode as off while it is on.
 
 class RunnerTests: XCTestCase {
 
-  func testCheckModeRepliesOnce() {
-    let plugin = DataSaverPlugin()
+  func testReportsEnabledWhileTheNetworkPathIsConstrained() {
+    XCTAssertEqual(checkMode(isConstrained: true), "ENABLED")
+  }
 
-    let call = FlutterMethodCall(methodName: "checkMode", arguments: nil)
+  func testReportsDisabledWhileTheNetworkPathIsUnconstrained() {
+    XCTAssertEqual(checkMode(isConstrained: false), "DISABLED")
+  }
 
-    let resultExpectation = expectation(description: "result block must be called exactly once.")
-    plugin.handle(call) { result in
-      XCTAssertTrue(["ENABLED", "DISABLED"].contains(result as? String ?? ""))
-      resultExpectation.fulfill()
+  /// A method channel reply may only be sent once - a second one raises
+  /// "Reply already submitted", which used to happen on every path change.
+  func testRepliesOnceEvenWhileTheNetworkPathKeepsChanging() {
+    let plugin = DataSaverPlugin(isConstrained: { report in
+      report(true)
+      report(false)
+      report(true)
+    })
+
+    var replies: [String] = []
+    plugin.handle(FlutterMethodCall(methodName: "checkMode", arguments: nil)) { reply in
+      replies.append(reply as? String ?? String(describing: reply))
     }
-    waitForExpectations(timeout: 5)
+
+    XCTAssertEqual(replies, ["ENABLED"])
   }
 
   func testUnknownMethodIsNotImplemented() {
-    let plugin = DataSaverPlugin()
+    let plugin = DataSaverPlugin(isConstrained: { $0(false) })
 
-    let call = FlutterMethodCall(methodName: "getPlatformVersion", arguments: nil)
-
-    let resultExpectation = expectation(description: "result block must be called.")
-    plugin.handle(call) { result in
-      XCTAssertTrue((result as? NSObject) === FlutterMethodNotImplemented)
-      resultExpectation.fulfill()
+    var reply: Any?
+    plugin.handle(FlutterMethodCall(methodName: "getPlatformVersion", arguments: nil)) {
+      reply = $0
     }
-    waitForExpectations(timeout: 1)
+
+    XCTAssertTrue((reply as? NSObject) === FlutterMethodNotImplemented)
   }
 
+  /// Smoke test that the real `NWPathMonitor` wiring still reports at all.
+  func testTheSystemProbeReportsTheCurrentPath() {
+    let reported = expectation(description: "the system probe reports a path")
+    reported.assertForOverFulfill = false
+
+    DataSaverPlugin.systemProbe { _ in reported.fulfill() }
+
+    wait(for: [reported], timeout: 10)
+  }
+
+  private func checkMode(isConstrained: Bool) -> String? {
+    let plugin = DataSaverPlugin(isConstrained: { $0(isConstrained) })
+
+    var reply: String?
+    plugin.handle(FlutterMethodCall(methodName: "checkMode", arguments: nil)) {
+      reply = $0 as? String
+    }
+
+    return reply
+  }
 }

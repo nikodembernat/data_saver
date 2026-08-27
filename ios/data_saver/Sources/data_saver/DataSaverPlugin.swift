@@ -3,8 +3,18 @@ import Network
 import UIKit
 
 public class DataSaverPlugin: NSObject, FlutterPlugin {
-  /// Serial queue that `NWPathMonitor` updates are delivered on.
-  private static let monitorQueue = DispatchQueue(label: "com.nikodembernat.data_saver.monitor")
+  /// Reports whether the current network path is constrained (Low Data Mode).
+  ///
+  /// `NWPath` has no public initialiser and Low Data Mode cannot be toggled
+  /// from a test, so the probe is injected to let tests drive both states.
+  typealias ConstrainedProbe = (@escaping (Bool) -> Void) -> Void
+
+  private let isConstrained: ConstrainedProbe
+
+  init(isConstrained: @escaping ConstrainedProbe = DataSaverPlugin.systemProbe) {
+    self.isConstrained = isConstrained
+    super.init()
+  }
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "data_saver", binaryMessenger: registrar.messenger())
@@ -15,36 +25,39 @@ public class DataSaverPlugin: NSObject, FlutterPlugin {
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "checkMode":
-      checkMode(result: result)
+      var hasReplied = false
+
+      isConstrained { constrained in
+        // The path is reported on *every* change, but a method channel reply
+        // may only be sent once - a second one raises "Reply already submitted".
+        guard !hasReplied else { return }
+        hasReplied = true
+
+        result(constrained ? "ENABLED" : "DISABLED")
+      }
     default:
       result(FlutterMethodNotImplemented)
     }
   }
 
-  /// Reports whether the current network path is constrained (Low Data Mode).
-  ///
-  /// `NWPathMonitor` reports *every* path change, but a method channel reply
-  /// may only be sent once - a second one raises "Reply already submitted".
-  /// Only the first update is answered and the monitor is torn down right
-  /// after, so it neither fires again nor outlives the call.
-  private func checkMode(result: @escaping FlutterResult) {
+  /// Serial queue that `NWPathMonitor` updates are delivered on.
+  static let monitorQueue = DispatchQueue(label: "com.nikodembernat.data_saver.monitor")
+
+  /// Watches the real network path and reports every update until cancelled.
+  static func systemProbe(_ report: @escaping (Bool) -> Void) {
     let monitor = NWPathMonitor()
-    var hasReplied = false
 
     monitor.pathUpdateHandler = { path in
-      guard !hasReplied else { return }
-      hasReplied = true
+      report(path.isConstrained)
 
-      result(path.isConstrained ? "ENABLED" : "DISABLED")
-
-      // Dropping the handler breaks the monitor's reference cycle. It happens
-      // asynchronously so the handler is not released while it is running.
-      Self.monitorQueue.async {
+      // Dropping the handler releases the monitor. It happens asynchronously so
+      // the handler is not deallocated while it is still running.
+      monitorQueue.async {
         monitor.pathUpdateHandler = nil
         monitor.cancel()
       }
     }
 
-    monitor.start(queue: Self.monitorQueue)
+    monitor.start(queue: monitorQueue)
   }
 }

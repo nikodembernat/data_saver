@@ -37,13 +37,86 @@ jobs:
         working-directory: example
         run: flutter pub get
 
+      # Also injects `example/android/gradlew`, which the Flutter app template
+      # keeps out of version control, so this has to run before Gradle is used.
+      - name: Build example
+        working-directory: example
+        run: flutter build apk --debug
+
       - name: Run unit tests
         working-directory: example/android
         run: ./gradlew :data_saver:testDebugUnitTest
 
-      - name: Build example
+  android_integration:
+    name: Test native code (Android, toggling Data Saver)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: flutter-actions/setup-flutter@v4
+
+      - name: Get dependencies
         working-directory: example
-        run: flutter build apk --debug
+        run: flutter pub get
+
+      # Without hardware acceleration the emulator takes too long to boot.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Toggles the real setting between runs and checks what `checkMode()`
+      # reports back, so an inverted or stale mapping fails the build.
+      - name: Toggle Data Saver and check the reported mode
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          working-directory: example
+          script: |
+            set -euo pipefail
+
+            package="com.nikodembernat.data_saver_example"
+
+            check() {
+              echo "::group::Data Saver reports $1"
+              flutter test integration_test --dart-define=expected_mode="$1"
+              echo "::endgroup::"
+            }
+
+            adb wait-for-device
+
+            adb shell cmd netpolicy set restrict-background false
+            check disabled
+
+            adb shell cmd netpolicy set restrict-background true
+            check enabled
+
+            # Data Saver stays on, but this app is now allowed to bypass it.
+            #
+            # The allowlist is keyed by UID, and `flutter test` uninstalls the app
+            # once it is done - which frees that UID and gets a fresh one handed
+            # out next time. So install first, read the UID off the installed
+            # package, and let the run below reinstall in place over it.
+            flutter build apk --debug
+            adb install -r build/app/outputs/flutter-apk/app-debug.apk
+            uid=$(adb shell pm list packages -U | grep "$package" | sed 's/.*uid://' | tr -d '\r')
+            test -n "$uid"
+            adb shell cmd netpolicy add restrict-background-whitelist "$uid"
+            check whitelisted
 
   ios:
     name: Test native code (iOS)
