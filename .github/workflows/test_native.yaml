@@ -1,0 +1,159 @@
+name: Test native code
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - master
+
+# A newer commit on the same branch or pull request makes older runs obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Test native code (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Matches `sourceCompatibility`/`jvmTarget` in `android/build.gradle.kts`.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: flutter-actions/setup-flutter@v4
+
+      # Also writes `example/android/local.properties`, which `settings.gradle.kts`
+      # reads to locate the Flutter SDK. Gradle fails without it.
+      - name: Get dependencies
+        working-directory: example
+        run: flutter pub get
+
+      - name: Run unit tests
+        working-directory: example/android
+        run: ./gradlew :data_saver:testDebugUnitTest
+
+      - name: Build example
+        working-directory: example
+        run: flutter build apk --debug
+
+  ios:
+    name: Test native code (iOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: flutter-actions/setup-flutter@v4
+
+      - name: Get dependencies
+        working-directory: example
+        run: flutter pub get
+
+      # Integrates the plugin through Swift Package Manager, which is the only
+      # supported option since 0.5.0.
+      - name: Build example
+        working-directory: example
+        run: flutter build ios --no-codesign
+
+      - name: Select a simulator
+        id: simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json | python3 -c '
+          import json, re, sys
+
+          best = ()
+          for runtime, devices in json.load(sys.stdin)["devices"].items():
+              match = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              if not match:
+                  continue
+              version = tuple(int(part) for part in match.groups())
+              for device in devices:
+                  if device["name"].startswith("iPhone") and (not best or version > best[0]):
+                      best = (version, device["udid"])
+          if not best:
+              sys.exit("No available iPhone simulator found.")
+          print(best[1])
+          ')
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      # Points `Generated.xcconfig` at a simulator debug build so that the
+      # `Run Prepare Flutter Framework Script` phase unpacks the right engine.
+      - name: Configure the example for a simulator
+        working-directory: example
+        run: flutter build ios --config-only --simulator --debug
+
+      - name: Run unit tests
+        working-directory: example/ios
+        run: |
+          xcodebuild test \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -destination "id=${{ steps.simulator.outputs.udid }}"
+
+  macos:
+    name: Test native code (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: flutter-actions/setup-flutter@v4
+
+      - name: Get dependencies
+        working-directory: example
+        run: flutter pub get
+
+      - name: Build example
+        working-directory: example
+        run: flutter build macos --debug
+
+      - name: Run unit tests
+        working-directory: example/macos
+        run: |
+          xcodebuild test \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -destination "platform=macOS"
+
+  web:
+    name: Test native code (Web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: flutter-actions/setup-flutter@v4
+
+      - name: Get dependencies
+        working-directory: example
+        run: flutter pub get
+
+      # `DataSaverWeb` reaches for `navigator.connection` through `package:web`,
+      # so it has to keep compiling with both web compilers.
+      - name: Build example (JavaScript)
+        working-directory: example
+        run: flutter build web
+
+      - name: Build example (WebAssembly)
+        working-directory: example
+        run: flutter build web --wasm

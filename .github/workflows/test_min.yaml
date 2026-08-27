@@ -1,5 +1,6 @@
 name: Test packages (3.44.0)
 on:
+  pull_request:
   push:
     branches:
       - master

@@ -1,5 +1,6 @@
 name: Test packages (stable)
 on:
+  pull_request:
   push:
     branches:
       - master
