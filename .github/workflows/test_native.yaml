@@ -176,6 +176,19 @@ jobs:
             -configuration Debug \
             -destination "id=${{ steps.simulator.outputs.udid }}"
 
+      # Low Data Mode cannot be switched on from a runner, so only the
+      # unconstrained state is assertable here. It still exercises the real
+      # `NWPathMonitor` end to end, and an inverted mapping would report
+      # `enabled` and fail. See `integration_test/data_saver_test.dart` for
+      # checking the constrained state by hand.
+      - name: Check the reported mode against the real network path
+        working-directory: example
+        run: |
+          xcrun simctl bootstatus "${{ steps.simulator.outputs.udid }}" -b
+          flutter test integration_test \
+            -d "${{ steps.simulator.outputs.udid }}" \
+            --dart-define=expected_mode=disabled
+
   macos:
     name: Test native code (macOS)
     runs-on: macos-latest
@@ -204,6 +217,12 @@ jobs:
             -scheme Runner \
             -configuration Debug \
             -destination "platform=macOS"
+
+      # Same limitation as iOS: only the unconstrained state can be asserted on
+      # a runner, but it still goes through the real `NWPathMonitor`.
+      - name: Check the reported mode against the real network path
+        working-directory: example
+        run: flutter test integration_test -d macos --dart-define=expected_mode=disabled
 
   web:
     name: Test native code (Web)
