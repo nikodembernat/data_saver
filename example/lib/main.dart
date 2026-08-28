@@ -42,9 +42,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(
-          title: const Text('data_saver example app'),
-        ),
+        appBar: AppBar(title: const Text('data_saver example app')),
         body: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Column(

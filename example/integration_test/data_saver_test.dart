@@ -31,7 +31,8 @@ void main() {
     expect(
       expectedMode,
       isNotEmpty,
-      reason: 'Run with --dart-define=expected_mode=<enabled|whitelisted|disabled>.',
+      reason:
+          'Run with --dart-define=expected_mode=<enabled|whitelisted|disabled>.',
     );
 
     const dataSaver = DataSaver();

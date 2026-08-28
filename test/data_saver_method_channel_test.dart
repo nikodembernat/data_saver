@@ -17,7 +17,9 @@ void main() {
     });
   }
 
-  tearDown(() => messenger.setMockMethodCallHandler(platform.methodChannel, null));
+  tearDown(
+    () => messenger.setMockMethodCallHandler(platform.methodChannel, null),
+  );
 
   test('maps every value the native implementations can return', () async {
     const cases = {
